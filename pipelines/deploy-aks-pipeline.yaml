@@ -1,0 +1,115 @@
+trigger:
+  - master
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  - group: tf_infra_vg
+
+steps:
+  - bash: |
+      echo "Logging into Azure using Service Principal values from variable group..."
+      echo "$(ARM_CLIENT_ID)" "$(ARM_CLIENT_SECRET)" "$(ARM_TENANT_ID)"
+      az login --service-principal --username "$(ARM_CLIENT_ID)" --password "$(ARM_CLIENT_SECRET)" --tenant "$(ARM_TENANT_ID)"
+
+  - task: DownloadSecureFile@1
+    name: publickey
+    inputs:
+      secureFile: azure_rsa.pub
+
+  - task: DownloadSecureFile@1
+    name: devtfvars
+    inputs:
+      secureFile: terraform.tfvars
+
+  - task: TerraformInstaller@1
+    inputs:
+      terraformVersion: "latest"
+
+  - task: TerraformTask@5
+    displayName: Init_TF
+    inputs:
+      provider: "azurerm"
+      command: "init"
+      backendServiceArm: "aks-terra-svcconn"
+      backendAzureRmResourceGroupName: "snoperatios-rg"
+      backendAzureRmStorageAccountName: "stgaccntsniacterra"
+      backendAzureRmContainerName: "akskvtfstate"
+      backendAzureRmKey: "aks-dev.terraform.tfstate"
+
+  - task: TerraformTask@5
+    displayName: plan_TF
+    inputs:
+      provider: "azurerm"
+      command: "plan"
+      commandOptions: '-var client_id=$(client_id) -var client_secret=$(client_secret) -var-file="$(devtfvars.secureFilePath)" -var ssh_public_key=$(publickey.secureFilePath) -out main.tfplan'
+      environmentServiceNameAzureRM: aks-terra-svcconn
+      workingDirectory: "$(System.DefaultWorkingDirectory)"
+
+  - task: TerraformTask@5
+    displayName: apply_TF
+    inputs:
+      provider: "azurerm"
+      command: "apply"
+      commandOptions: "main.tfplan"
+      environmentServiceNameAzureRM: aks-terra-svcconn
+      workingDirectory: "$(System.DefaultWorkingDirectory)"
+
+  # -----------------------------------------
+  # Extract kube_config output
+  # -----------------------------------------
+  - bash: |
+      echo "Extracting kubeconfig..."
+      terraform output -raw kube_config > azurek8s
+    workingDirectory: "$(System.DefaultWorkingDirectory)"
+    displayName: "Get kube_config output"
+
+  # ---------------------------
+  # Upload kubeconfig to Storage Account
+  # ---------------------------
+  - bash: |
+      echo "Uploading kubeconfig to storage account..."
+
+      STORAGE_ACCOUNT_NAME="stgaccntsniacterra"
+      CONTAINER_NAME="kubeconfigs"
+
+      # Ensure container exists
+      az storage container create \
+        --name $CONTAINER_NAME \
+        --account-name $STORAGE_ACCOUNT_NAME \
+        --auth-mode login \
+        --output none
+
+      # Upload file
+      az storage blob upload \
+        --account-name $STORAGE_ACCOUNT_NAME \
+        --auth-mode login \
+        --container-name $CONTAINER_NAME \
+        --file azurek8s \
+        --name "kubeconfig-$(Build.BuildId).yaml" \
+        --overwrite true
+
+      echo "Kubeconfig uploaded as: kubeconfig-$(Build.BuildId).yaml"
+    workingDirectory: "$(System.DefaultWorkingDirectory)"
+    displayName: "Upload kubeconfig to Storage Account"
+
+  # -----------------------------------------
+  # Copy to artifact staging
+  # -----------------------------------------
+  - task: CopyFiles@2
+    displayName: Copy kube_config
+    inputs:
+      SourceFolder: "$(System.DefaultWorkingDirectory)"
+      Contents: "azurek8s"
+      TargetFolder: "$(Build.ArtifactStagingDirectory)"
+
+  # -----------------------------------------
+  # Publish artifact
+  # -----------------------------------------
+  - task: PublishBuildArtifacts@1
+    displayName: Publish kubeconfig
+    inputs:
+      PathtoPublish: "$(Build.ArtifactStagingDirectory)"
+      ArtifactName: "kube_config"
+      publishLocation: Container

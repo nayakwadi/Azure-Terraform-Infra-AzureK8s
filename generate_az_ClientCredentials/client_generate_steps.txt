@@ -1,0 +1,18 @@
+Official documentation can be found here : https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/guides/service_principal_client_secret
+
+1. All the steps in this part are executed in local laptop, ensure that you have installed az cli command line tool
+2. You have access to Azure Portal with a valid subscription and permissions to create new User
+3. Open a terminal , run below commands:
+    a. az login 
+    b. Provide the login credentials in the browser, this will set up your terminal with appropriate azure Portal
+    c. run this command:
+        az ad sp create-for-rbac -n="<spn_name_for_infra_setup>" --role="Contributor" --scopes="/subscriptions/<susbcriptionId>"
+    d. Above step will display client details in below format
+            {
+            "appId": "aaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+            "displayName": "<spn_name_for_infra_setup>",
+            "password": "<password_for_the_appId>",
+            "tenant": "<tenant_id>"
+            }
+    e. Be sure to save this information in a safe place like Azure Key vault
+    f. Add these client details in a VariableGroup in Azure ADO, for referring in CI/CD pipelines

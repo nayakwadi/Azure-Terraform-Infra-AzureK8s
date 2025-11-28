@@ -1,0 +1,4 @@
+1. Run this command to generate the ssh keys for nodepool VMS:
+    ssh-keygen -m PEM -t rsa -b 4096
+2. Upload this file into ADO-->Pipelines-->Library-->Secured Files. 
+    This file would be used in deployment pipeline yaml definition
