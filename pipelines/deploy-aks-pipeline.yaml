@@ -113,3 +113,15 @@ steps:
       PathtoPublish: "$(Build.ArtifactStagingDirectory)"
       ArtifactName: "kube_config"
       publishLocation: Container
+
+  # # -----------------------------------------
+  # # destroy all infra
+  # # -----------------------------------------
+  # - task: TerraformTask@5
+  #   displayName: detroy_TF
+  #   inputs:
+  #     provider: "azurerm"
+  #     command: "destroy"
+  #     commandOptions: "main.tfplan"
+  #     environmentServiceNameAzureRM: aks-terra-svcconn
+  #     workingDirectory: "$(System.DefaultWorkingDirectory)"
